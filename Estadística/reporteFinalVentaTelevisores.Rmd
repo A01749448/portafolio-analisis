@@ -1,0 +1,222 @@
+---
+title: "Reporte Final de Venta de Televisores: Series de Tiempo no Estacionarias"
+author: "Jorge Chávez Badillo A01749448" 
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+subtitle: "Módulo 5 (Portafolio Análisis)"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Ventas de Televisores
+
+## Resumen 
+
+En este reporte final para el portafolio de análisis se aborda el problema de ventas de televisores donde se cuenta con la información de ventas por trimestre y lo que se busca es que usando dichos datos se realice un análisis completo utilizando como herramienta estadística las series de tiempo no estacionarias y para que de esta manera pueda existir un modelo con el cual sea posible hacer predicciones sobre las ventas de televisores, es importante mencionar que se encontró que al utilizar un promedios móviles se tiene un mejor ajuste en la gráfica comparado con los resultados obtenidos con la regresión lineal, además de ello fue posible hacer las predicciones para el próximo año. 
+
+## Introducción
+
+### Descripción del Problema
+
+Usando los datos de ventas de televisores se busca generar un análisis de tendencia de una serie de tiempo. 
+
+```{r}
+t = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+ventas = c(4.8, 4.1, 6, 6.5, 5.8, 5.2, 6.8, 7.4, 6, 5.6, 7.5, 7.8, 6.3, 5.9, 8, 8.4)
+```
+
+Dada la naturaleza de los datos con los que se cuentan para dar solución al problema, observamos que es posible utilizar la herramienta de series de tiempo, la cual es una secuencia de datos recopilados en intervalos de tiempo regulares y visualmente se muestra como una curva que evoluciona en el tiempo, siendo un conjunto de observaciones sobre los valores que toma una variable a través del tiempo y se cuentan con dos tipos de series de tiempo muy importantes las cuales son las siguientes:
+
+- Series de tiempo estacionarias: Son aquellas que no presentan tendencia, donde el proceso cuenta con una media y variabilidad constante.
+
+- Series de tiempo no estacionarias: Son series que presentan tendencia. Los cambios en la media determinan una tendencia a crecer o decrecer a largo plazo, por lo que la serie no oscila alrededor de un valor constante.
+
+De acuerdo con los datos que se tienen, una de las preguntas se tiene como objetivo responder con este reporte es ¿Cuál será la predicción de ventas de televisores para el próximo año?
+
+## Análisis de los Resultados
+
+### Gráfico de Dispersión
+
+Realiza el gráfico de dispersión. Observa la tendencia y los ciclos.
+
+```{r}
+t = 1:length(ventas)
+plot(t, ventas, type ="o", col = "red", main = "Ventas por Trimestre")
+```
+
+### Análisis de Tendencia y Estacionalidad
+
+Descompón la serie en sus 3 componentes e interprétalos.
+
+```{r}
+x = ts(ventas, frequency = 4, start(c(2016, 1)))
+D = decompose(x, type = "m")
+plot(D, col ="blue")
+D$seasonal
+D$trend
+D$figure
+```
+
+De acuerdo con las gráficas anteriores, en la parte de tendencia podemos verificar que en efecto existe un patrón gradual y consistente en las variaciones, lo que nos dice que se está trabajando con una serie no estacionaria. 
+
+### Modelo Líneal de la Tendencia
+
+- Realiza la regresión lineal de la tendencia (ventas desestacionalizadas vs tiempo)
+- Dibuja la recta junto con las ventas desestacionalizadas.
+
+```{r}
+ventas_desestacionalizadas = (D$x) / (D$seasonal) 
+x3 = 1:16
+y3 = ventas_desestacionalizadas
+N3 = lm(y3~x3)
+N3
+plot(x3, y3, type = "l")
+abline(N3, col = "red")
+text(6, 7, " ventas = 5.1080 + 0.1474 trimestre")
+```
+
+#### Verificación de Supuestos
+
+- Significancia de $\beta1$
+
+Dado que $\beta1 = 0.1474$, podemos decir que hay dependencia, pues este valor es significativamente diferente de 0, y por lo tanto, el modelo lineal es apropiado. 
+
+- Variabilidad Explicada por el Modelo
+
+```{r}
+summary(N3)
+```
+
+Observando el coeficiente de determinación r cuadrado, tenemos que este al tener un valor muy cercano a 1 indica que existe un ajuste casi perfecto y verifica que el modelo es fiable para hacer futuras predicciones. 
+
+- Normalidad
+
+```{r}
+E = N3$residuals
+Y = N3$fitted.values
+
+qqnorm(E)
+qqline(E, col = "red")
+
+hist(E, col = "lightcyan", freq = FALSE, main = "Histograma de Residuos", xlim = c(-0.5, 1), ylim = c(0, 3), xlab = "", ylab = "Densidad")
+lines(density(E), col = "red")
+curve(dnorm(x, mean = mean(E), sd = sd(E)), add = TRUE, col = "blue", lwd = 2)
+
+shapiro.test(E)
+```
+
+- Homocedasticidad
+
+```{r}
+plot(Y, E, ylab = "Residuos", xlab = "Valores estimados", pch = 20, col = "red", main = "Valores Estimados vs Residuos")
+abline(h = 0, col = "red")
+text(Y[], E[], 1:30, cex = 0.8, pos = 3, offset = 0.2)
+```
+
+- Independencia
+
+```{r}
+n = length(ventas)
+plot(c(1:n), N3$residuals, type = "l", xlab = "Orden de las observaciones", ylab = "Residuos", main = "Errores vs Orden de observación")
+abline(h = 0, col = "red")
+```
+
+### Predicción Promedios Móviles
+
+#### CME y EPAM
+
+Cálculo del CME y el EPAM (promedio de los errores procentuales) de la predicción de la serie de tiempo. 
+
+```{r}
+e = NA
+p = NA
+ep = NA
+
+for (i in 1:14) {
+  p[i+2] = ((ventas[i] + ventas[i+1] + ventas[i+2] + ventas[i+3]) / 4) / D$seasonal[i]
+  #p[i+2] = (5.1080 + 0.1474 * i) / D$seasonal[i]
+  e[i+2] = ventas[i+2] - p[i+2]
+  ep[i+2] = abs((e[i+2] / ventas[i+2]) * 100)
+}
+
+CME = mean(e^2, na.rm = TRUE)
+cat("CME = ", CME)
+
+EPAM = mean(ep, na.rm = TRUE)
+cat("\nEPAM = ", EPAM)
+
+T = data.frame(t, ventas, p, e, ep)
+T
+```
+
+
+#### Ventas y Predicciones vs Tiempo
+
+```{r, fig.align = 'center'}
+x = 3:16
+plot(t, ventas, type ="o", col = "red", main = "Ventas, Predicciones (Ventas Promedios Móviles) vs Tiempo")
+lines(x, p[x], type ="o", col = "blue")
+```
+
+### Predicción Regresión Líneal
+
+#### CME y EPAM
+
+Cálculo del CME y el EPAM (promedio de los errores procentuales) de la predicción de la serie de tiempo. 
+
+```{r}
+e = NA
+p = NA
+ep = NA
+
+for (i in 1:14) {
+  #p[i+2] = ((ventas[i] + ventas[i+1] + ventas[i+2] + ventas[i+3]) / 4) / D$seasonal[i]
+  p[i+2] = (5.1080 + 0.1474 * i) / D$seasonal[i]
+  e[i+2] = ventas[i+2] - p[i+2]
+  ep[i+2] = abs((e[i+2] / ventas[i+2]) * 100)
+}
+
+CME = mean(e^2, na.rm = TRUE)
+cat("CME = ", CME)
+
+EPAM = mean(ep, na.rm = TRUE)
+cat("\nEPAM = ", EPAM)
+
+T = data.frame(t, ventas, p, e, ep)
+T
+```
+
+#### Ventas y Predicciones vs Tiempo
+
+```{r, fig.align = 'center'}
+x = 3:16
+plot(t, ventas, type ="o", col = "red", main = "Ventas, Predicciones (Regresión Lineal) vs Tiempo")
+lines(x, p[x], type ="o", col = "blue")
+```
+
+### Pronóstico para el Siguiente Año
+
+```{r}
+f = function(x) {5.1080 + 0.1474 * x}
+# Los ídices estacionales son: 
+a1 = D$seasonal[1]
+a2 = D$seasonal[2]
+a3 = D$seasonal[3]
+a4 = D$seasonal[4]
+f(17) * a1
+f(18) * a2 
+f(19) * a3
+f(20) * a4
+```
+
+## Conclusión
+
+Para este problema se realizaron las predicciones utilizando promedios móviles y la regresión líneal; al momento de observar las gráficas anteriores se puede concluir que ambos modelos son bastante precisos pues se acercan mucho a el comportamiento de los ventas reales por trimestre, y además los valores de CME y EPAM para ambas predicciones se mantienen relativamente bajos y similares entre ellos, y es por ello que este modelo es bastante fiable para poder predecir las ventas.
+
+## Anexos
+
+Liga de Github: https://github.com/A01749448/portafolio-analisis
